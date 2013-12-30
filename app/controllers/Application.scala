@@ -19,6 +19,18 @@ object Application extends Controller {
     // Concurrent.broadcast returns (Enumerator, Concurrent.Channel)
     val (out, channel) = Concurrent.broadcast[JsValue]
 
+    channel.push(JsObject(
+      Seq(
+        "tick" -> JsString(kind),
+        "user" -> JsString(user),
+        "message" -> JsString(text),
+        "members" -> JsArray(
+          members.toList.map(JsString)
+        )
+      )
+    )
+    chatChannel.push(msg))
+
     //log the message to stdout and send response back to client
     val in = Iteratee.foreach[JsValue] { event =>
         println(event)

@@ -1,5 +1,10 @@
 package controllers
 
+
+import akka.actor.Props
+import akka.pattern.ask
+import akka.util.Timeout
+
 import play.api._
 import play.api.mvc._
 
@@ -8,39 +13,37 @@ import play.api._
 import play.api.libs.json._
 import play.api.libs.iteratee._
 import play.api.libs.concurrent._
+import play.api.Play.current
 
 import play.api.libs.concurrent.Execution.Implicits._
 
 import scala.concurrent._
+import scala.concurrent.duration._
+
+import models.GameState
+
+import actors.TickActor
+import actors.ReceiveTick
+import actors.SocketDisconnect
+import actors.SocketConnect
 
 object Application extends Controller {
 
   val tickActor = Akka.system.actorOf(Props[TickActor])
 
   def index = WebSocket.async[JsValue] { request =>
-    // Concurrent.broadcast returns (Enumerator, Concurrent.Channel)
-    val (out, channel) = Concurrent.broadcast[JsValue]
 
-    channel.push(JsObject(
-      Seq(
-        "tick" -> JsString(kind),
-        "user" -> JsString(user),
-        "message" -> JsString(text),
-        "members" -> JsArray(
-          members.toList.map(JsString)
-        )
-      )
-    )
-    chatChannel.push(msg))
+    implicit val timeout = Timeout(3 seconds)
 
-    //log the message to stdout and send response back to client
-    val in = Iteratee.foreach[JsValue] { event =>
-        println(event)
-        //the channel will push to the Enumerator
-        //channel push("RESPONSE: " + msg)
-    }
+      val id = GameState.generateUid
 
-    future { (in, out) }
+      (tickActor ? SocketConnect(id)).map {
+        enumerator =>
+          (Iteratee.foreach[JsValue] { event =>
+              tickActor ! ReceiveTick(id, event)
+          }.map { _ => tickActor ! SocketDisconnect(id) }, enumerator.asInstanceOf[Enumerator[JsValue]])
+      }
+
   }
 
 }

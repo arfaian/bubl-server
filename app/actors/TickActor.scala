@@ -1,9 +1,9 @@
 package actors
 
+import akka.actor.Actor
+
 import play.api.libs.json._
 import play.api.libs.json.Json._
-
-import akka.actor.Actor
 
 import play.api.libs.iteratee.{Concurrent, Enumerator}
 
@@ -12,14 +12,19 @@ import play.api.Logger
 import play.api.libs.concurrent.Execution.Implicits._
 
 import scala.concurrent.duration._
+import scala.collection.concurrent.TrieMap
+
+import scala.language.postfixOps
+
+import models.PlayerTick
 
 class TickActor extends Actor {
 
   lazy val log = Logger("application." + this.getClass.getName)
 
-  val cancellable = context.system.scheduler.schedule(0 milliseconds, 30 milliseconds, self, Tick())
-  var webSockets = Map[Int, PlayerChannel]()
-  var playerTicks = Map[Int, Int]()
+  val cancellable = context.system.scheduler.schedule(0 milliseconds, 30 milliseconds, self, SendTick())
+  var webSockets = TrieMap[Int, PlayerChannel]()
+  var playerTicks = TrieMap[Int, PlayerTick]()
 
   override def receive = {
 
@@ -39,12 +44,20 @@ class TickActor extends Actor {
 
       sender ! playerChannel.enumerator
 
-    case Tick() =>
+    case SendTick() =>
       webSockets.foreach {
-        case (id, channel) =>
-          val data = Map("event" -> "", "data" -> toJson(GameState.newInstance(playerTicks)))
-          channel push Json.toJson(data)
+        case (id, playerChannel) =>
+          val ticks = List[JsObject]()
+          playerTicks.foreach {
+            case (i, pT) =>
+              ticks :+ JsObject(Seq(i.toString -> Json.toJson(pT)))
+          }
+          val data = Json.obj("event" -> "incoming.tick", "data" -> ticks)
+          playerChannel.channel.push(Json.toJson(data))
       }
+
+    case ReceiveTick(id, event) =>
+      playerTicks += ((id, Json.fromJson[PlayerTick](event).get))
 
     case SocketDisconnect(id) =>
 
@@ -69,12 +82,9 @@ class TickActor extends Actor {
 
 }
 
-
 sealed trait SocketMessage
 
 case class SocketConnect(id: Int) extends SocketMessage
 case class SocketDisconnect(id: Int) extends SocketMessage
-case class Tick() extends SocketMessage
-case class Start(id: Int) extends SocketMessage
-case class Stop(id: Int) extends SocketMessage
-
+case class SendTick() extends SocketMessage
+case class ReceiveTick(id: Int, event: JsValue) extends SocketMessage

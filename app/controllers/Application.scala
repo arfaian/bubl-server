@@ -15,6 +15,8 @@ import scala.concurrent._
 
 object Application extends Controller {
 
+  val tickActor = Akka.system.actorOf(Props[TickActor])
+
   def index = WebSocket.async[JsValue] { request =>
     // Concurrent.broadcast returns (Enumerator, Concurrent.Channel)
     val (out, channel) = Concurrent.broadcast[JsValue]

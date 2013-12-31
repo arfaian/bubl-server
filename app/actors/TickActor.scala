@@ -2,21 +2,19 @@ package actors
 
 import akka.actor.Actor
 
+import models.PlayerTick
+
+import play.api.libs.concurrent.Execution.Implicits._
+import play.api.libs.iteratee.Concurrent.Channel
+import play.api.libs.iteratee.{Concurrent, Enumerator}
 import play.api.libs.json._
 import play.api.libs.json.Json._
-
-import play.api.libs.iteratee.{Concurrent, Enumerator}
-
-import play.api.libs.iteratee.Concurrent.Channel
 import play.api.Logger
-import play.api.libs.concurrent.Execution.Implicits._
 
-import scala.concurrent.duration._
 import scala.collection.concurrent.TrieMap
-
+import scala.collection.mutable
+import scala.concurrent.duration._
 import scala.language.postfixOps
-
-import models.PlayerTick
 
 class TickActor extends Actor {
 
@@ -44,20 +42,40 @@ class TickActor extends Actor {
 
       sender ! playerChannel.enumerator
 
+    case SendSession(id) =>
+      val playerChannel = webSockets.get(id).get
+
+      val sessionStart = Json.obj(
+        "event" -> "session:start",
+        "data" -> Json.obj(
+          "session" -> Json.obj("id" -> id)
+        )
+      )
+
+      log debug s"sessionStart: $sessionStart"
+      playerChannel.channel.push(sessionStart)
+
     case SendTick() =>
       webSockets.foreach {
         case (id, playerChannel) =>
-          val ticks = List[JsObject]()
+          log debug s"playerTicks: $playerTicks"
+          val ticks = mutable.ListBuffer[JsObject]()
           playerTicks.foreach {
             case (i, pT) =>
-              ticks :+ JsObject(Seq(i.toString -> Json.toJson(pT)))
+              val jsObject = JsObject(Seq(i.toString -> Json.toJson(pT)))
+              log debug s"jsObject: $jsObject"
+              ticks += jsObject
           }
-          val data = Json.obj("event" -> "incoming.tick", "data" -> ticks)
-          playerChannel.channel.push(Json.toJson(data))
+          log debug s"ticks: $ticks"
+          val msg = Json.obj("event" -> "incoming.tick", "data" -> ticks.toList)
+          val data = Json.toJson(msg)
+          log debug s"data: $data"
+          playerChannel.channel.push(data)
       }
 
     case ReceiveTick(id, event) =>
-      playerTicks += ((id, Json.fromJson[PlayerTick](event).get))
+      log debug s"received message from $id: $event"
+      playerTicks += ((id, Json.fromJson[PlayerTick](event \ "data").get))
 
     case SocketDisconnect(id) =>
 
@@ -86,5 +104,6 @@ sealed trait SocketMessage
 
 case class SocketConnect(id: Int) extends SocketMessage
 case class SocketDisconnect(id: Int) extends SocketMessage
+case class SendSession(id: Int) extends SocketMessage
 case class SendTick() extends SocketMessage
 case class ReceiveTick(id: Int, event: JsValue) extends SocketMessage

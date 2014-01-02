@@ -20,9 +20,9 @@ class TickActor extends Actor {
 
   lazy val log = Logger("application." + this.getClass.getName)
 
-  val cancellable = context.system.scheduler.schedule(0 milliseconds, 30 milliseconds, self, SendTick())
   var webSockets = TrieMap[Int, PlayerChannel]()
   var playerTicks = TrieMap[Int, PlayerTick]()
+  val cancellable = context.system.scheduler.schedule(500 milliseconds, 30 milliseconds, self, SendTick())
 
   override def receive = {
 
@@ -56,20 +56,19 @@ class TickActor extends Actor {
       playerChannel.channel.push(sessionStart)
 
     case SendTick() =>
+      log debug s"playerTicks: $playerTicks"
+      var jsObject = Json.obj()
+      playerTicks.foreach {
+        case (i, pT) =>
+          jsObject = jsObject ++ Json.obj(i.toString -> Json.toJson(pT))
+      }
+      log debug s"jsObject: $jsObject"
+      val msg = Json.obj("event" -> "incoming.tick", "data" -> jsObject)
+      val data = Json.toJson(msg)
+      log debug s"data: $data"
+
       webSockets.foreach {
         case (id, playerChannel) =>
-          log debug s"playerTicks: $playerTicks"
-          val ticks = mutable.ListBuffer[JsObject]()
-          playerTicks.foreach {
-            case (i, pT) =>
-              val jsObject = JsObject(Seq(i.toString -> Json.toJson(pT)))
-              log debug s"jsObject: $jsObject"
-              ticks += jsObject
-          }
-          log debug s"ticks: $ticks"
-          val msg = Json.obj("event" -> "incoming.tick", "data" -> ticks.toList)
-          val data = Json.toJson(msg)
-          log debug s"data: $data"
           playerChannel.channel.push(data)
       }
 
@@ -88,13 +87,12 @@ class TickActor extends Actor {
         webSockets += (id -> playerChannel)
         log debug s"channel for player: $id count: ${playerChannel.channelsCount}"
       } else {
-        removePlayerChannel(id)
-        log debug s"removed channel and for player $id"
+        webSockets -= id
+        playerTicks -= id
+        log debug s"removed channel for player $id"
       }
 
   }
-
-  def removePlayerChannel(id: Int) = webSockets -= id
 
   case class PlayerChannel(id: Int, var channelsCount: Int, enumerator: Enumerator[JsValue], channel: Channel[JsValue])
 

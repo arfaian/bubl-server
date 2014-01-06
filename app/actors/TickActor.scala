@@ -1,9 +1,16 @@
 package actors
 
-import akka.actor.Actor
+import akka.actor.{Actor, Props}
+import akka.pattern.ask
+import akka.util.Timeout
+
+import java.nio.ByteBuffer
+import java.util.concurrent.TimeUnit
 
 import models.PlayerTick
+import models.GameObject
 
+import play.api.libs.concurrent.Akka
 import play.api.libs.concurrent.Execution.Implicits._
 import play.api.libs.iteratee.Concurrent.Channel
 import play.api.libs.iteratee.{Concurrent, Enumerator}
@@ -11,8 +18,11 @@ import play.api.libs.json._
 import play.api.libs.json.Json._
 import play.api.Logger
 
+import play.api.Play.current
+
 import scala.collection.concurrent.TrieMap
 import scala.collection.mutable
+import scala.concurrent.Await
 import scala.concurrent.duration._
 import scala.language.postfixOps
 
@@ -23,6 +33,7 @@ class TickActor extends Actor {
   var webSockets = TrieMap[Int, PlayerChannel]()
   var playerTicks = TrieMap[Int, PlayerTick]()
   val cancellable = context.system.scheduler.schedule(500 milliseconds, 30 milliseconds, self, SendTick())
+  val worldActor = Akka.system.actorSelection("/user/worldActor")
 
   override def receive = {
 
@@ -30,7 +41,7 @@ class TickActor extends Actor {
       log debug s"socket connected for player $id"
 
       val playerChannel: PlayerChannel = webSockets.get(id) getOrElse {
-        val broadcast: (Enumerator[JsValue], Channel[JsValue]) = Concurrent.broadcast[JsValue]
+        val broadcast: (Enumerator[Array[Byte]], Channel[Array[Byte]]) = Concurrent.broadcast[Array[Byte]]
         PlayerChannel(id, 0, broadcast._1, broadcast._2)
       }
 
@@ -45,36 +56,66 @@ class TickActor extends Actor {
     case SendSession(id) =>
       val playerChannel = webSockets.get(id).get
 
-      val sessionStart = Json.obj(
-        "event" -> "session:start",
-        "data" -> Json.obj(
-          "session" -> Json.obj("id" -> id)
-        )
-      )
+      implicit val timeout = Timeout(Duration(3, TimeUnit.SECONDS))
 
-      log debug s"sessionStart: $sessionStart"
-      playerChannel.channel.push(sessionStart)
+      (worldActor ? WorldState()).onSuccess { case result =>
+        val gameObjects = result.asInstanceOf[List[GameObject]]
+        val bufferSize = (gameObjects.size * 30) + 6
+        val byteBuffer = ByteBuffer.allocate(bufferSize);
+        byteBuffer.putChar('a');
+        byteBuffer.putInt(id);
+
+        gameObjects.foreach { entity =>
+          byteBuffer.putInt(entity.id)
+          byteBuffer.putChar(entity.objectType)
+          byteBuffer.putFloat(entity.position.x.toFloat)
+          byteBuffer.putFloat(entity.position.y.toFloat)
+          byteBuffer.putFloat(entity.position.z.toFloat)
+          byteBuffer.putFloat(entity.rotation.x.toFloat)
+          byteBuffer.putFloat(entity.rotation.y.toFloat)
+          byteBuffer.putFloat(entity.rotation.z.toFloat)
+        }
+        byteBuffer.flip
+
+        log debug s"sessionStart: $byteBuffer"
+        playerChannel.channel.push(byteBuffer.array)
+    }
 
     case SendTick() =>
+      var bufferLength = (playerTicks.size * 28) + 2
+      log debug s"bufferLength: $bufferLength"
+      val byteBuffer = ByteBuffer.allocate(bufferLength);
+      byteBuffer.putChar('b');
       log debug s"playerTicks: $playerTicks"
-      var jsObject = Json.obj()
       playerTicks.foreach {
-        case (i, pT) =>
-          jsObject = jsObject ++ Json.obj(i.toString -> Json.toJson(pT))
+        case (id, playerTick) =>
+          byteBuffer.putInt(id)
+          byteBuffer.putFloat(playerTick.px)
+          byteBuffer.putFloat(playerTick.py)
+          byteBuffer.putFloat(playerTick.pz)
+          byteBuffer.putFloat(playerTick.rx)
+          byteBuffer.putFloat(playerTick.ry)
+          byteBuffer.putFloat(playerTick.rz)
       }
-      log debug s"jsObject: $jsObject"
-      val msg = Json.obj("event" -> "incoming.tick", "data" -> jsObject)
-      val data = Json.toJson(msg)
-      log debug s"data: $data"
+      log debug s"data: $byteBuffer"
 
       webSockets.foreach {
         case (id, playerChannel) =>
-          playerChannel.channel.push(data)
+          playerChannel.channel.push(byteBuffer.array)
       }
 
-    case ReceiveTick(id, event) =>
-      log debug s"received message from $id: $event"
-      playerTicks += ((id, Json.fromJson[PlayerTick](event \ "data").get))
+    case ReceiveTick(id, bytes) =>
+      val len = bytes.length
+      log debug s"received message from $id with byte array length $len"
+      val buffer = ByteBuffer.wrap(bytes)
+      val playerTick = new PlayerTick(
+        buffer.getFloat(0),
+        buffer.getFloat(4),
+        buffer.getFloat(8),
+        buffer.getFloat(12),
+        buffer.getFloat(16),
+        buffer.getFloat(20))
+      playerTicks += ((id, playerTick))
 
     case SocketDisconnect(id) =>
 
@@ -94,7 +135,7 @@ class TickActor extends Actor {
 
   }
 
-  case class PlayerChannel(id: Int, var channelsCount: Int, enumerator: Enumerator[JsValue], channel: Channel[JsValue])
+  case class PlayerChannel(id: Int, var channelsCount: Int, enumerator: Enumerator[Array[Byte]], channel: Channel[Array[Byte]])
 
 }
 
@@ -104,4 +145,4 @@ case class SocketConnect(id: Int) extends SocketMessage
 case class SocketDisconnect(id: Int) extends SocketMessage
 case class SendSession(id: Int) extends SocketMessage
 case class SendTick() extends SocketMessage
-case class ReceiveTick(id: Int, event: JsValue) extends SocketMessage
+case class ReceiveTick(id: Int, event: Array[Byte]) extends SocketMessage

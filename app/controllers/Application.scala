@@ -32,7 +32,7 @@ object Application extends Controller {
 
   val tickActor = Akka.system.actorOf(Props[TickActor])
 
-  def index = WebSocket.async[JsValue] { request =>
+  def index = WebSocket.async[Array[Byte]] { request =>
 
     implicit val timeout = Timeout(3 seconds)
 
@@ -40,10 +40,10 @@ object Application extends Controller {
 
     (tickActor ? SocketConnect(id)).map {
       enumerator =>
-        tickActor ! SendSession(id)
-        (Iteratee.foreach[JsValue] { event =>
+        tickActor ? SendSession(id)
+        (Iteratee.foreach[Array[Byte]] { event =>
             tickActor ! ReceiveTick(id, event)
-        }.map { _ => tickActor ! SocketDisconnect(id) }, enumerator.asInstanceOf[Enumerator[JsValue]])
+        }.map { _ => tickActor ! SocketDisconnect(id) }, enumerator.asInstanceOf[Enumerator[Array[Byte]]])
     }
 
   }

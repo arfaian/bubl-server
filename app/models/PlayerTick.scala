@@ -7,6 +7,7 @@ case class PlayerTick(
   val px: Float,
   val py: Float,
   val pz: Float,
+  val rx: Float,
   val ry: Float,
   val rz: Float)
 

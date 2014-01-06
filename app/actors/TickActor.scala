@@ -131,6 +131,17 @@ class TickActor extends Actor {
         webSockets -= id
         playerTicks -= id
         log debug s"removed channel for player $id"
+        self ! PlayerLeave(id)
+      }
+
+    case PlayerLeave(id) =>
+      val byteBuffer = ByteBuffer.allocate(6);
+      byteBuffer.putChar('d');
+      byteBuffer.putInt(id)
+
+      webSockets.foreach {
+        case (id, playerChannel) =>
+          playerChannel.channel.push(byteBuffer.array)
       }
 
   }
@@ -145,4 +156,5 @@ case class SocketConnect(id: Int) extends SocketMessage
 case class SocketDisconnect(id: Int) extends SocketMessage
 case class SendSession(id: Int) extends SocketMessage
 case class SendTick() extends SocketMessage
+case class PlayerLeave(id: Int) extends SocketMessage
 case class ReceiveTick(id: Int, event: Array[Byte]) extends SocketMessage

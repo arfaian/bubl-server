@@ -9,6 +9,7 @@ import java.util.concurrent.TimeUnit
 
 import models.PlayerTick
 import models.GameObject
+import models.GameState
 
 import play.api.libs.concurrent.Akka
 import play.api.libs.concurrent.Execution.Implicits._
@@ -23,8 +24,33 @@ import play.api.Play.current
 import scala.collection.concurrent.TrieMap
 import scala.collection.mutable
 import scala.concurrent.Await
+import scala.concurrent.Future
 import scala.concurrent.duration._
 import scala.language.postfixOps
+
+object TickActor {
+
+  lazy val default = {
+    Akka.system.actorOf(Props[TickActor])
+  }
+
+  def join:Future[(Iteratee[Array[Byte], _], Enumerator[Array[Byte]])] = {
+
+    val id = GameState.generateUid
+
+    val playerActor = context.actorOf(PlayerActor.props(id), name = s"playerActor$id")
+
+    val iteratee = Iteratee.foreach[Array[Byte]] { event =>
+      playerActor ! ReceiveTick(id, event)
+    }.map { _ =>
+      default ! SocketDisconnect(id)
+    }
+
+    (default ? SocketConnect(id)).map { _ =>
+      (iteratee, enumerator)
+    }
+  }
+}
 
 class TickActor extends Actor {
 
@@ -32,7 +58,7 @@ class TickActor extends Actor {
 
   var webSockets = TrieMap[Int, PlayerChannel]()
   var playerTicks = TrieMap[Int, PlayerTick]()
-  val cancellable = context.system.scheduler.schedule(500 milliseconds, 30 milliseconds, self, SendTick())
+  val cancellable = context.system.scheduler.schedule(500 milliseconds, 15 milliseconds, self, SendTick())
   val worldActor = Akka.system.actorSelection("/user/worldActor")
 
   override def receive = {
@@ -60,10 +86,11 @@ class TickActor extends Actor {
 
       (worldActor ? WorldState()).onSuccess { case result =>
         val gameObjects = result.asInstanceOf[List[GameObject]]
-        val bufferSize = (gameObjects.size * 30) + 6
+        val bufferSize = (gameObjects.size * 30) + 10
         val byteBuffer = ByteBuffer.allocate(bufferSize);
         byteBuffer.putChar('a');
         byteBuffer.putInt(id);
+        byteBuffer.putInt(GameState.getAndIncrementTickCount);
 
         gameObjects.foreach { entity =>
           byteBuffer.putInt(entity.id)
@@ -82,10 +109,16 @@ class TickActor extends Actor {
     }
 
     case SendTick() =>
-      var bufferLength = (playerTicks.size * 28) + 2
+      var bufferLength = (playerTicks.size * 28) + 14
       log debug s"bufferLength: $bufferLength"
       val byteBuffer = ByteBuffer.allocate(bufferLength);
       byteBuffer.putChar('b');
+      byteBuffer.putInt(GameState.getAndIncrementTickCount);
+      val time = TimeUnit.MILLISECONDS.convert(System.nanoTime, TimeUnit.NANOSECONDS);
+      val lowBits = time.toInt;
+      val highBits = (time >> 32).toInt;
+      byteBuffer.putInt(lowBits);
+      byteBuffer.putInt(highBits);
       log debug s"playerTicks: $playerTicks"
       playerTicks.foreach {
         case (id, playerTick) =>
@@ -153,6 +186,7 @@ class TickActor extends Actor {
 sealed trait SocketMessage
 
 case class SocketConnect(id: Int) extends SocketMessage
+case class SocketConnected(enumerator: Enumerator[Array[Byte]], id: Int) extends SocketMessage
 case class SocketDisconnect(id: Int) extends SocketMessage
 case class SendSession(id: Int) extends SocketMessage
 case class SendTick() extends SocketMessage

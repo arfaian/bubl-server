@@ -6,7 +6,9 @@ class GameState() {
 }
 
 object GameState {
-  val atomicInteger: AtomicInteger = new AtomicInteger(0);
+  val uidGenerator: AtomicInteger = new AtomicInteger(0);
+  val tickGenerator: AtomicInteger = new AtomicInteger(0);
 
-  def generateUid = atomicInteger.getAndIncrement()
+  def generateUid = uidGenerator.getAndIncrement
+  def getAndIncrementTickCount = tickGenerator.getAndIncrement
 }

@@ -35,20 +35,7 @@ object TickActor {
   }
 
   def join:Future[(Iteratee[Array[Byte], _], Enumerator[Array[Byte]])] = {
-
-    val id = GameState.generateUid
-
-    val playerActor = context.actorOf(PlayerActor.props(id), name = s"playerActor$id")
-
-    val iteratee = Iteratee.foreach[Array[Byte]] { event =>
-      playerActor ! ReceiveTick(id, event)
-    }.map { _ =>
-      default ! SocketDisconnect(id)
-    }
-
-    (default ? SocketConnect(id)).map { _ =>
-      (iteratee, enumerator)
-    }
+    default ? SocketConnect
   }
 }
 
@@ -63,7 +50,18 @@ class TickActor extends Actor {
 
   override def receive = {
 
-    case SocketConnect(id) =>
+    case SocketConnect() =>
+
+      val id = GameState.generateUid
+
+      val playerActor = context.actorOf(PlayerActor.props(id), name = s"playerActor$id")
+
+      val iteratee = Iteratee.foreach[Array[Byte]] { event =>
+        playerActor ! ReceiveTick(id, event)
+      }.map { _ =>
+        default ! SocketDisconnect(id)
+      }
+
       log debug s"socket connected for player $id"
 
       val playerChannel: PlayerChannel = webSockets.get(id) getOrElse {
@@ -77,7 +75,7 @@ class TickActor extends Actor {
       log debug s"channel for player: $id count: ${playerChannel.channelsCount}"
       log debug s"channel count: ${webSockets.size}"
 
-      sender ! playerChannel.enumerator
+      sender ! (iteratee, playerChannel.enumerator)
 
     case SendSession(id) =>
       val playerChannel = webSockets.get(id).get
@@ -137,19 +135,6 @@ class TickActor extends Actor {
           playerChannel.channel.push(byteBuffer.array)
       }
 
-    case ReceiveTick(id, bytes) =>
-      val len = bytes.length
-      log debug s"received message from $id with byte array length $len"
-      val buffer = ByteBuffer.wrap(bytes)
-      val playerTick = new PlayerTick(
-        buffer.getFloat(0),
-        buffer.getFloat(4),
-        buffer.getFloat(8),
-        buffer.getFloat(12),
-        buffer.getFloat(16),
-        buffer.getFloat(20))
-      playerTicks += ((id, playerTick))
-
     case SocketDisconnect(id) =>
 
       log debug s"closed socket for $id"
@@ -185,7 +170,7 @@ class TickActor extends Actor {
 
 sealed trait SocketMessage
 
-case class SocketConnect(id: Int) extends SocketMessage
+case class SocketConnect() extends SocketMessage
 case class SocketConnected(enumerator: Enumerator[Array[Byte]], id: Int) extends SocketMessage
 case class SocketDisconnect(id: Int) extends SocketMessage
 case class SendSession(id: Int) extends SocketMessage

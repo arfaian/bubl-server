@@ -2,23 +2,42 @@ package actors
 
 import akka.actor.{Actor, Props}
 
-import models.UserCommand
+import models._
 
 class PhysicsActor() extends Actor {
 
-  val inputVelocity = new Vector3()
-  val inputQuaternion = new Quaternion()
-  val SPEED = 200;
+  val SPEED = 200.0;
   val INV_MAX_FPS = 1 / 100;
+  val inverseLook = new Vector3(-1, -1, -1)
+  val mouseSensitivity = new Vector3(0.25, 0.25, 0.25)
+
+  var inputVelocity = new Vector3()
+  var inputQuaternion = new Quaternion()
+  var previousRotation = new Vector3()
+  var aggregateRotation = new Vector3()
 
   override def receive = {
     case ProcessCommand(userCommand) =>
-      inputVelocity.set(0, 0, 0);
+      var x = 0.0
+      var z = 0.0
 
-      if (userCommand.forward) inputVelocity.z -= SPEED
-      if (userCommand.backward) inputVelocity.x -= SPEED
-      if (userCommand.left) inputVelocity.z += SPEED
-      if (userCommand.right) inputVelocity.x += SPEED
+      if (userCommand.forward) {
+        z = z - SPEED
+      }
+
+      if (userCommand.backward) {
+        x = x - SPEED
+      }
+
+      if (userCommand.left) {
+        z = z + SPEED
+      }
+
+      if (userCommand.right) {
+        x = x + SPEED
+      }
+
+      inputVelocity = new Vector3(x = x, z = z)
 
       val rotation = aggregateRotation.multiply(inverseLook)
         .multiply(mouseSensitivity)
@@ -26,14 +45,12 @@ class PhysicsActor() extends Actor {
         .add(previousRotation)
 
       previousRotation = rotation;
-      aggregateRotation.set(0, 0, 0)
-      aggregateRotation.x += userCommand.mousedy
-      aggregateRotation.y += userCommand.mousedx
+      aggregateRotation = new Vector3(userCommand.mousedy, userCommand.mousedx)
 
       val euler = new Euler(rotation.x, rotation.y, rotation.z)
-      inputQuaternion.setFromEuler(euler)
-      inputVelocity.applyQuaternion(inputQuaternion)
-      inputVelocity.multiplyScalar(INV_MAX_FPS)
+      inputQuaternion = inputQuaternion.setFromEuler(euler)
+      inputVelocity = inputVelocity.applyQuaternion(inputQuaternion)
+          .multiplyScalar(INV_MAX_FPS)
 
       sender ! PlayerUpdate(inputVelocity, rotation)
   }

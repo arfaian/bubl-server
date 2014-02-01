@@ -8,13 +8,14 @@ import java.nio.ByteBuffer
 import java.util.concurrent.TimeUnit
 
 import models.PlayerTick
+import models.ReceiveCommand
 import models.GameObject
 import models.GameState
 
 import play.api.libs.concurrent.Akka
 import play.api.libs.concurrent.Execution.Implicits._
 import play.api.libs.iteratee.Concurrent.Channel
-import play.api.libs.iteratee.{Concurrent, Enumerator}
+import play.api.libs.iteratee.{Concurrent, Enumerator, Iteratee}
 import play.api.libs.json._
 import play.api.libs.json.Json._
 import play.api.Logger
@@ -56,8 +57,8 @@ class TickActor extends Actor {
 
       val playerActor = context.actorOf(PlayerActor.props(id), name = s"playerActor$id")
 
-      val iteratee = Iteratee.foreach[Array[Byte]] { event =>
-        playerActor ! ReceiveTick(id, event)
+      val iteratee = Iteratee.foreach[Array[Byte]] { bytes =>
+        playerActor ! ReceiveCommand(bytes)
       }.map { _ =>
         default ! SocketDisconnect(id)
       }

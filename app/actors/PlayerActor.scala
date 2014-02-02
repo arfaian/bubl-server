@@ -4,8 +4,10 @@ import akka.actor.{Actor, Props}
 
 import java.nio.ByteBuffer
 
+import play.api.libs.iteratee.Concurrent.Channel
 import play.api.libs.concurrent.Akka
 import play.api.Logger
+import play.api.Play.current
 
 import scala.collection.mutable.ListBuffer
 import scala.util.Random
@@ -13,17 +15,19 @@ import scala.util.Random
 import models._
 
 object PlayerActor {
-  def props(id: Int):Props = Props(new PlayerActor(id))
+  def props(id: Int, channel: Channel[Array[Byte]]):Props = Props(new PlayerActor(id, channel))
 }
 
 class PlayerActor(id: Int,
-  position: Vector3 = new Vector3(0, 0, 0),
-  velocity: Vector3 = new Vector3(0, 0, 0),
-  rotation: Vector3 = new Vector3(0, 0, 0)) extends Actor {
+  channel: Channel[Array[Byte]],
+  position: Vector3 = new Vector3,
+  velocity: Vector3 = new Vector3,
+  rotation: Vector3 = new Vector3,
+  quaternion: Quaternion = new Quaternion) extends Actor {
 
   lazy val log = Logger("application." + this.getClass.getName)
 
-  val physicsActor = Akka.system.actorOf(s"/user/physicsActor$id")
+  val physicsActor = Akka.system.actorOf(Props[PhysicsActor], name = s"/user/physicsActor$id")
 
   override def receive = {
     case ReceiveCommand(bytes) =>
@@ -32,16 +36,14 @@ class PlayerActor(id: Int,
       val buffer = ByteBuffer.wrap(bytes)
       val userCommand = new UserCommand(
         buffer.getInt(0),
-        buffer.get(32),
-        buffer.get(40),
-        buffer.get(48),
-        buffer.get(56),
+        buffer.getChar(32) == 1,
+        buffer.getChar(40) == 1,
+        buffer.getChar(48) == 1,
+        buffer.getChar(56) == 1,
         buffer.getFloat(64),
         buffer.getFloat(96))
-      physicsActor ! ProcessCommand(userCommand)
+      physicsActor ! ProcessCommand(position, rotation, quaternion, userCommand)
 
-    case PlayerUpdate(position, velocity, rotation) =>
-      
   }
 }
 

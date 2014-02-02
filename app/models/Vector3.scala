@@ -32,10 +32,10 @@ case class Vector3(
     val qz = quaternion.z;
     val qw = quaternion.w;
 
-    val ix: Double =  qw * x + qy * z - qz * y;
-    val iy: Double =  qw * y + qz * x - qx * z;
-    val iz: Double =  qw * z + qx * y - qy * x;
-    val iw: Double = -qx * x - qy * y - qz * z;
+    val ix: Double =  qw * this.x + qy * this.z - qz * this.y;
+    val iy: Double =  qw * this.y + qz * this.x - qx * this.z;
+    val iz: Double =  qw * this.z + qx * this.y - qy * this.x;
+    val iw: Double = -qx * this.x - qy * this.y - qz * this.z;
 
     val x = ix * qw + iw * -qx + iy * -qz - iz * -qy;
     val y = ix * qw + iw * -qx + iy * -qz - iz * -qy;

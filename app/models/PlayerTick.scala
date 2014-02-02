@@ -4,6 +4,7 @@ import play.api.libs.json._
 import play.api.libs.functional.syntax._
 
 case class PlayerTick(
+  val tick: Int,
   val px: Float,
   val py: Float,
   val pz: Float,

@@ -7,10 +7,7 @@ import akka.util.Timeout
 import java.nio.ByteBuffer
 import java.util.concurrent.TimeUnit
 
-import models.PlayerTick
-import models.ReceiveCommand
-import models.GameObject
-import models.GameState
+import models._
 
 import play.api.libs.concurrent.Akka
 import play.api.libs.concurrent.Execution.Implicits._
@@ -31,18 +28,22 @@ import scala.language.postfixOps
 
 object TickActor {
 
+  implicit val timeout = Timeout(Duration(3, TimeUnit.SECONDS))
+
   lazy val default = {
-    Akka.system.actorOf(Props[TickActor])
+    Akka.system.actorOf(Props[TickActor], name = "tickActor")
   }
 
   def join:Future[(Iteratee[Array[Byte], _], Enumerator[Array[Byte]])] = {
-    default ? SocketConnect
+    (default ? SocketConnect).asInstanceOf[Future[(Iteratee[Array[Byte], _], Enumerator[Array[Byte]])]]
   }
 }
 
 class TickActor extends Actor {
 
   lazy val log = Logger("application." + this.getClass.getName)
+
+  implicit val timeout = Timeout(Duration(3, TimeUnit.SECONDS))
 
   var webSockets = TrieMap[Int, PlayerChannel]()
   var playerTicks = TrieMap[Int, PlayerTick]()
@@ -55,20 +56,20 @@ class TickActor extends Actor {
 
       val id = GameState.generateUid
 
-      val playerActor = context.actorOf(PlayerActor.props(id), name = s"playerActor$id")
-
-      val iteratee = Iteratee.foreach[Array[Byte]] { bytes =>
-        playerActor ! ReceiveCommand(bytes)
-      }.map { _ =>
-        default ! SocketDisconnect(id)
-      }
-
-      log debug s"socket connected for player $id"
-
       val playerChannel: PlayerChannel = webSockets.get(id) getOrElse {
         val broadcast: (Enumerator[Array[Byte]], Channel[Array[Byte]]) = Concurrent.broadcast[Array[Byte]]
         PlayerChannel(id, 0, broadcast._1, broadcast._2)
       }
+
+      val playerActor = context.actorOf(PlayerActor.props(id, playerChannel.channel), name = s"playerActor$id")
+
+      val iteratee = Iteratee.foreach[Array[Byte]] { bytes =>
+        playerActor ! ReceiveCommand(bytes)
+      }.map { _ =>
+        self ! SocketDisconnect(id)
+      }
+
+      log debug s"socket connected for player $id"
 
       playerChannel.channelsCount = playerChannel.channelsCount + 1
       webSockets += (id -> playerChannel)
@@ -78,10 +79,20 @@ class TickActor extends Actor {
 
       sender ! (iteratee, playerChannel.enumerator)
 
+    case PlayerUpdate(id, tick, position, rotation, velocity) =>
+      val t = new PlayerTick(
+        tick,
+        position.x.toFloat,
+        position.y.toFloat,
+        position.z.toFloat,
+        rotation.x.toFloat,
+        rotation.y.toFloat,
+        rotation.z.toFloat
+      )
+      playerTicks += (id -> t)
+
     case SendSession(id) =>
       val playerChannel = webSockets.get(id).get
-
-      implicit val timeout = Timeout(Duration(3, TimeUnit.SECONDS))
 
       (worldActor ? WorldState()).onSuccess { case result =>
         val gameObjects = result.asInstanceOf[List[GameObject]]

@@ -28,14 +28,18 @@ import scala.language.postfixOps
 
 object TickActor {
 
+  lazy val log = Logger("application." + this.getClass.getName)
+
   implicit val timeout = Timeout(Duration(3, TimeUnit.SECONDS))
 
   lazy val default = {
+    log debug "create tickActor"
     Akka.system.actorOf(Props[TickActor], name = "tickActor")
   }
 
   def join:Future[(Iteratee[Array[Byte], _], Enumerator[Array[Byte]])] = {
-    (default ? SocketConnect).asInstanceOf[Future[(Iteratee[Array[Byte], _], Enumerator[Array[Byte]])]]
+    log debug "join"
+    (default ? SocketConnect()).asInstanceOf[Future[(Iteratee[Array[Byte], _], Enumerator[Array[Byte]])]]
   }
 }
 
@@ -53,6 +57,7 @@ class TickActor extends Actor {
   override def receive = {
 
     case SocketConnect() =>
+      log debug "SocketConnect"
 
       val id = GameState.generateUid
 
@@ -77,6 +82,8 @@ class TickActor extends Actor {
       log debug s"channel for player: $id count: ${playerChannel.channelsCount}"
       log debug s"channel count: ${webSockets.size}"
 
+      self ? SendSession(id)
+
       sender ! (iteratee, playerChannel.enumerator)
 
     case PlayerUpdate(id, tick, position, rotation, velocity) =>
@@ -92,6 +99,7 @@ class TickActor extends Actor {
       playerTicks += (id -> t)
 
     case SendSession(id) =>
+      log debug "SendSession"
       val playerChannel = webSockets.get(id).get
 
       (worldActor ? WorldState()).onSuccess { case result =>
@@ -120,7 +128,7 @@ class TickActor extends Actor {
 
     case SendTick() =>
       var bufferLength = (playerTicks.size * 28) + 14
-      log debug s"bufferLength: $bufferLength"
+      //log debug s"bufferLength: $bufferLength"
       val byteBuffer = ByteBuffer.allocate(bufferLength);
       byteBuffer.putChar('b');
       byteBuffer.putInt(GameState.getAndIncrementTickCount);
@@ -129,7 +137,7 @@ class TickActor extends Actor {
       val highBits = (time >> 32).toInt;
       byteBuffer.putInt(lowBits);
       byteBuffer.putInt(highBits);
-      log debug s"playerTicks: $playerTicks"
+      //log debug s"playerTicks: $playerTicks"
       playerTicks.foreach {
         case (id, playerTick) =>
           byteBuffer.putInt(id)
@@ -140,7 +148,7 @@ class TickActor extends Actor {
           byteBuffer.putFloat(playerTick.ry)
           byteBuffer.putFloat(playerTick.rz)
       }
-      log debug s"data: $byteBuffer"
+      //log debug s"data: $byteBuffer"
 
       webSockets.foreach {
         case (id, playerChannel) =>

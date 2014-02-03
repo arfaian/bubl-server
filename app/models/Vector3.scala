@@ -1,9 +1,13 @@
 package models
 
+import play.api.Logger
+
 case class Vector3(
   val x: Double = 0,
   val y: Double = 0,
   val z: Double = 0) {
+
+  lazy val log = Logger("application." + this.getClass.getName)
 
   def add(v: Vector3):Vector3 = {
     val x = this.x + v.x;
@@ -40,6 +44,11 @@ case class Vector3(
     val x = ix * qw + iw * -qx + iy * -qz - iz * -qy;
     val y = ix * qw + iw * -qx + iy * -qz - iz * -qy;
     val z = ix * qw + iw * -qx + iy * -qz - iz * -qy;
+
+    log debug s"inputQuaternion"
+    log debug s"x: $x"
+    log debug s"y: $y"
+    log debug s"z: $z"
 
     Vector3(x, y, z);
   }

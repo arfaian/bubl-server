@@ -5,6 +5,7 @@ import akka.actor.{Actor, Props}
 import models._
 
 import play.api.libs.concurrent.Akka
+import play.api.Logger
 import play.api.Play.current
 
 object PhysicsActor {
@@ -12,6 +13,8 @@ object PhysicsActor {
 }
 
 class PhysicsActor(id: Int) extends Actor {
+
+  lazy val log = Logger("application." + this.getClass.getName)
 
   val SPEED = 200.0;
   val INV_MAX_FPS = 1 / 100;
@@ -28,23 +31,27 @@ class PhysicsActor(id: Int) extends Actor {
       var x = 0.0
       var z = 0.0
 
-      if (userCommand.forward) {
+      if (userCommand.forward == true) {
         z = z - SPEED
       }
 
-      if (userCommand.backward) {
+      if (userCommand.backward == true) {
         x = x - SPEED
       }
 
-      if (userCommand.left) {
+      if (userCommand.left == true) {
         z = z + SPEED
       }
 
-      if (userCommand.right) {
+      if (userCommand.right == true) {
         x = x + SPEED
       }
 
+      log debug s"x: $x"
+      log debug s"z: $z"
+
       inputVelocity = new Vector3(x = x, z = z)
+      log debug s"inputVelocity: $inputVelocity"
 
       val aggregateRotation = new Vector3(userCommand.mousedy, userCommand.mousedx)
 
@@ -53,14 +60,18 @@ class PhysicsActor(id: Int) extends Actor {
         .multiplyScalar(INV_MAX_FPS)
         .add(rotation)
 
-      val euler = new Euler(rotation.x, rotation.y, rotation.z)
+      val euler = new Euler(r.x, r.y, r.z)
       inputQuaternion = inputQuaternion.setFromEuler(euler)
       inputVelocity = inputVelocity.applyQuaternion(inputQuaternion)
           .multiplyScalar(INV_MAX_FPS)
 
       val updatedPosition = translate(position, inputVelocity, quaternion)
 
+      log debug inputVelocity.toString
+      log debug updatedPosition.toString
+
       tickActor ! PlayerUpdate(id, userCommand.tick, updatedPosition, r, inputVelocity)
+      sender ! PlayerUpdate(id, userCommand.tick, updatedPosition, r, inputVelocity)
   }
 
   def translate(position: Vector3, velocity: Vector3, quaternion: Quaternion) = {

@@ -27,23 +27,35 @@ class PlayerActor(id: Int,
 
   lazy val log = Logger("application." + this.getClass.getName)
 
-  val physicsActor = Akka.system.actorOf(Props[PhysicsActor], name = s"/user/physicsActor$id")
+  val physicsActor = context.actorOf(PhysicsActor.props(id), name = s"physicsActor$id")
 
   override def receive = {
     case ReceiveCommand(bytes) =>
       val len = bytes.length
-      log debug s"received message from $id with byte array length $len"
       val buffer = ByteBuffer.wrap(bytes)
       val userCommand = new UserCommand(
         buffer.getInt(0),
-        buffer.getChar(32) == 1,
-        buffer.getChar(40) == 1,
-        buffer.getChar(48) == 1,
-        buffer.getChar(56) == 1,
-        buffer.getFloat(64),
-        buffer.getFloat(96))
+        buffer.get(4) == 1,
+        buffer.get(5) == 1,
+        buffer.get(6) == 1,
+        buffer.get(7) == 1,
+        buffer.getFloat(8),
+        buffer.getFloat(40))
+      log debug userCommand.toString
       physicsActor ! ProcessCommand(position, rotation, quaternion, userCommand)
 
+    case PlayerUpdate(id, tick, position, rotation, velocity) =>
+      val buffer = ByteBuffer.allocate(30);
+      buffer.putChar('e');
+      buffer.putInt(tick);
+      buffer.putFloat(position.x.toFloat)
+      buffer.putFloat(position.y.toFloat)
+      buffer.putFloat(position.z.toFloat)
+      buffer.putFloat(rotation.x.toFloat)
+      buffer.putFloat(rotation.y.toFloat)
+      buffer.putFloat(rotation.z.toFloat)
+      buffer.flip
+      channel.push(buffer.array)
   }
 }
 

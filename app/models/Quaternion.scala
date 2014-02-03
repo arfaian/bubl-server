@@ -7,12 +7,12 @@ case class Quaternion(
   w: Double = 1) {
 
   def setFromEuler(euler: Euler):Quaternion = {
-    var c1 = math.cos(euler.x / 2)
-    var c2 = math.cos(euler.y / 2)
-    var c3 = math.cos(euler.z / 2)
-    var s1 = math.sin(euler.x / 2)
-    var s2 = math.sin(euler.y / 2)
-    var s3 = math.sin(euler.z / 2)
+    var c1 = math.cos(euler.x / 2.0)
+    var c2 = math.cos(euler.y / 2.0)
+    var c3 = math.cos(euler.z / 2.0)
+    var s1 = math.sin(euler.x / 2.0)
+    var s2 = math.sin(euler.y / 2.0)
+    var s3 = math.sin(euler.z / 2.0)
 
     // TODO: Needs own euler??
 

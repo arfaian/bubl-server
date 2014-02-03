@@ -17,7 +17,7 @@ class PhysicsActor(id: Int) extends Actor {
   lazy val log = Logger("application." + this.getClass.getName)
 
   val SPEED = 200.0;
-  val INV_MAX_FPS = 1 / 100;
+  val INV_MAX_FPS = 1.0 / 100.0;
   val inverseLook = new Vector3(-1, -1, -1)
   val mouseSensitivity = new Vector3(0.25, 0.25, 0.25)
 
@@ -55,15 +55,19 @@ class PhysicsActor(id: Int) extends Actor {
 
       val aggregateRotation = new Vector3(userCommand.mousedy, userCommand.mousedx)
 
-      val r = aggregateRotation.multiply(inverseLook)
-        .multiply(mouseSensitivity)
-        .multiplyScalar(INV_MAX_FPS)
-        .add(rotation)
+      log debug s"aggregateRotation: $aggregateRotation"
+
+      var test = aggregateRotation * inverseLook * mouseSensitivity * INV_MAX_FPS
+
+      log debug s"test: $test"
+
+      val r = aggregateRotation * inverseLook * mouseSensitivity * INV_MAX_FPS + rotation
+
+      log debug s"r: $r"
 
       val euler = new Euler(r.x, r.y, r.z)
       inputQuaternion = inputQuaternion.setFromEuler(euler)
-      inputVelocity = inputVelocity.applyQuaternion(inputQuaternion)
-          .multiplyScalar(INV_MAX_FPS)
+      inputVelocity = inputVelocity.applyQuaternion(inputQuaternion)  * INV_MAX_FPS
 
       val updatedPosition = translate(position, inputVelocity, quaternion)
 
@@ -75,11 +79,11 @@ class PhysicsActor(id: Int) extends Actor {
   }
 
   def translate(position: Vector3, velocity: Vector3, quaternion: Quaternion) = {
-    val vx = new Vector3(x = 1).applyQuaternion(quaternion).multiplyScalar(velocity.x)
-    val vy = new Vector3(y = 1).applyQuaternion(quaternion).multiplyScalar(velocity.y)
-    val vz = new Vector3(z = 1).applyQuaternion(quaternion).multiplyScalar(velocity.z)
+    val vx = Vector3.X.applyQuaternion(quaternion) * velocity.x
+    val vy = Vector3.Y.applyQuaternion(quaternion) * velocity.y
+    val vz = Vector3.Z.applyQuaternion(quaternion) * velocity.z
 
-    position.add(vx).add(vy).add(vz)
+    position + vx + vy + vz
   }
 }
 

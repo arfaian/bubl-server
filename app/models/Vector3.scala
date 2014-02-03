@@ -2,33 +2,22 @@ package models
 
 import play.api.Logger
 
+object Vector3 {
+  val X = Vector3(1, 0, 0)
+  val Y = Vector3(0, 1, 0)
+  val Z = Vector3(0, 0, 1)
+}
+
 case class Vector3(
-  val x: Double = 0,
-  val y: Double = 0,
-  val z: Double = 0) {
+  x: Double = 0.0,
+  y: Double = 0.0,
+  z: Double = 0.0) {
 
   lazy val log = Logger("application." + this.getClass.getName)
 
-  def add(v: Vector3):Vector3 = {
-    val x = this.x + v.x;
-    val y = this.y + v.y;
-    val z = this.z + v.z;
-    Vector3(x, y, z);
-  }
-
-  def multiply(v: Vector3):Vector3 = {
-    val x = this.x * v.x;
-    val y = this.y * v.y;
-    val z = this.z * v.z;
-    Vector3(x, y, z);
-  }
-
-  def multiplyScalar(scalar: Double):Vector3 = {
-    val x = this.x * scalar;
-    val y = this.y * scalar;
-    val z = this.z * scalar;
-    Vector3(x, y, z);
-  }
+  def +(v: Vector3):Vector3 = Vector3(x + v.x, y + v.y, z + v.z)
+  def *(v: Vector3):Vector3 = Vector3(x * v.x, y * v.y, z * v.z)
+  def *(scalar: Double):Vector3 = Vector3(x * scalar, y * scalar, z * scalar)
 
   def applyQuaternion(quaternion: Quaternion):Vector3 = {
     val qx = quaternion.x;
